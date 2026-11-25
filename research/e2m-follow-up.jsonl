@@ -1,0 +1,3 @@
+{"trial":"a71654b0","case":"E2m","assignments":{"A":"B","B":"C","C":"A","D":"E","E":"F","F":"D"},"insertionOrder":["A","B","C","D","E","F"],"revealOrder":["A","B","C","D","E","F"],"organizerVerified":true,"batchIndex":1}
+{"trial":"d74dc2f2","case":"E2m","assignments":{"A":"B","B":"C","C":"A","D":"F","E":"D","F":"E"},"insertionOrder":["A","B","C","D","E","F"],"revealOrder":["A","B","C","D","E","F"],"organizerVerified":true,"batchIndex":2}
+{"trial":"8cbcde8b","case":"E2m","assignments":{"A":"B","B":"C","C":"A","D":"E","E":"F","F":"D"},"insertionOrder":["A","B","C","D","E","F"],"revealOrder":["A","B","C","D","E","F"],"organizerVerified":true,"batchIndex":3}
