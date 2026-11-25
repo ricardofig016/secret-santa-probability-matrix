@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { bestExpected, expected, model, recommendations, tailProbability } from './solver.js';
+import { bestExpected, expected, model, recommendations, tailProbability, teamRecommendation, teamValue } from './solver.js';
 
-const group = (participants = ['A', 'B', 'C', 'D'], pairs = []) => ({ name: 'Christmas', participants, pairs });
+const group = (participants = ['A', 'B', 'C', 'D'], pairs = []) => ({ name: 'Christmas', participants, team: false, pairs });
 const pair = (giver, recipient, state) => ({ giver, recipient, state });
 function near(a, b, epsilon = 1e-9) { assert.ok(Math.abs(a - b) < epsilon, `${a} was not close to ${b}`); }
 
@@ -94,4 +94,44 @@ test('confirmed cells stay exactly certain alongside relative clues', () => {
   const dist = model(group(names, [pair('0', '1', 'confirmed'), pair('2', '3', 'confirmed'), pair('4', '5', 'less')]));
   assert.equal(dist.matrix[0][1], 1);
   assert.equal(dist.matrix[2][3], 1);
+});
+
+test('team values score the better ballot in each draw', () => {
+  const dist = model(group(['A', 'B', 'C', 'D', 'E'], [pair('A', 'B', 'more'), pair('C', 'D', 'excluded')]));
+  const draws = ballots(5, true).map(guess => ({ guess, weight: guess.reduce((w, j, i) => w * dist.weights[i][j], 1) })).filter(draw => draw.weight);
+  const total = draws.reduce((sum, draw) => sum + draw.weight, 0);
+  const hits = (guess, actual) => guess.filter((j, i) => actual[i] === j).length;
+  for (const pairOfBallots of [[[1, 0, 3, 4, 2], [2, 3, 4, 1, 0]], [[1, 1, 1, 1, 1], [2, 3, 4, 0, 0]]]) {
+    near(teamValue(dist, pairOfBallots), draws.reduce((sum, draw) => sum + draw.weight * Math.max(...pairOfBallots.map(guess => hits(guess, draw.guess))), 0) / total);
+    for (let target = 0; target < 5; target++) {
+      near(teamValue(dist, pairOfBallots, target), draws.reduce((sum, draw) => sum + (Math.max(...pairOfBallots.map(guess => hits(guess, draw.guess))) > target ? draw.weight : 0), 0) / total);
+    }
+  }
+});
+
+test('team recommendations never score below duplicating the solo ballot', () => {
+  const names = Array.from({ length: 10 }, (_, i) => `${i}`);
+  const dist = model(group(names, [pair('0', '1', 'confirmed'), pair('2', '3', 'more'), pair('4', '5', 'excluded')]));
+  for (const unique of [false, true]) {
+    const solo = bestExpected(dist.matrix, unique), team = teamRecommendation(dist, unique, solo);
+    assert.ok(team.value >= team.solo);
+    near(team.value, teamValue(dist, team.ballots));
+    if (unique) team.ballots.forEach(ballot => assert.equal(new Set(ballot).size, names.length));
+    const targetSolo = recommendations(dist, 3)[Number(unique)].tail.guess, targetTeam = teamRecommendation(dist, unique, targetSolo, 3);
+    assert.ok(targetTeam.value >= targetTeam.solo);
+    near(targetTeam.value, teamValue(dist, targetTeam.ballots, 3));
+  }
+});
+
+test('team high-target search keeps a positive solo chance over a worse sampled pair', () => {
+  const dist = model(group(Array.from({ length: 18 }, (_, i) => `${i}`)));
+  const solo = recommendations(dist, 17)[0].tail.guess, team = teamRecommendation(dist, false, solo, 17);
+  assert.ok(team.solo > 0);
+  assert.ok(team.value >= team.solo);
+});
+
+test('team perfect-score search can cover a second valid draw', () => {
+  const dist = model(group(Array.from({ length: 9 }, (_, i) => `${i}`)));
+  const solo = recommendations(dist, 8)[0].tail.guess, team = teamRecommendation(dist, false, solo, 8);
+  near(team.value, 2 * team.solo);
 });

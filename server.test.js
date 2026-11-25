@@ -40,7 +40,7 @@ test('groups use separate YAML files, reject stale saves, and survive reload', a
   assert.deepEqual(contenders.map(response => response.status).sort(), [200, 409]);
   assert.deepEqual((await readdir(directory)).sort(), [id, second.id].sort());
   await writeFile(join(directory, 'bad.yaml'), 'invalid YAML group');
-  await writeFile(join(directory, 'other.yml'), 'name: Other\nparticipants: []\npairs: []\n');
+  await writeFile(join(directory, 'other.yml'), 'name: Other\nparticipants: []\nteam: false\npairs: []\n');
   const listing = await (await send(api)).json();
   assert.equal(listing.groups.length, 3);
   assert.equal(listing.warnings.length, 1);

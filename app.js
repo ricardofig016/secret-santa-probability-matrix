@@ -4,8 +4,8 @@ const $ = id => document.getElementById(id);
 const groups = $('groups'), board = $('board'), slider = $('target'), matrix = $('matrix-scroll');
 const createForm = $('create-form'), rosterForm = $('roster-form'), clueForm = $('clue-form');
 let listing = [], selected, group, revision, history = [], generation = 0, saved = 0;
-let saving = false, saveError = '', conflict = false, changing = false;
-let worker, token = 0, modelReady = false, probabilities, computedTarget, sliderTimer, cells = [], clueCell;
+let mode = 'expected', computedMode, computedTeam, saving = false, saveError = '', conflict = false, changing = false;
+let worker, token = 0, modelReady = false, probabilities, hovered = null, selectedRow = null, selectedColumn = null, lines = { rows: [], columns: [] }, computedTarget, sliderTimer, cells = [], clueCell;
 const samePair = (item, giver, recipient) => item.giver === giver && item.recipient === recipient;
 const percent = p => p > 0 && p < 0.0001 ? '<0.01%' : p < 1 && p > 0.9999 ? '>99.99%' : `${Number((p * 100).toFixed(2))}%`;
 
@@ -46,6 +46,7 @@ function openGroup(envelope) {
   saveError = '';
   conflict = false;
   slider.value = '0';
+  mode = 'expected';
   updateOptions();
   renderGroup();
 }
@@ -69,7 +70,9 @@ function edit(next, view) {
   group = validated;
   generation++;
   if (view === 'all') renderGroup();
-  else {
+  else if (view === 'recommendations') {
+    requestTarget();
+  } else {
     renderCells();
     startAnalysis();
   }
@@ -79,7 +82,6 @@ function edit(next, view) {
 function target() { return Number(slider.value); }
 function showTarget() {
   $('target-value').textContent = slider.value;
-  $('target-description').textContent = target() === group.participants.length ? 'No ballot can beat this target.' : `Beat the target by getting ${target() + 1} or more pairs correct.`;
 }
 function makeMatrix() {
   const names = group.participants;
@@ -88,29 +90,74 @@ function makeMatrix() {
   if (!names.length) return;
   const table = element('table');
   table.setAttribute('aria-label', 'Probability that each giver draws each recipient');
+  lines = { rows: names.map(() => []), columns: names.map(() => []) };
   const head = table.createTHead().insertRow();
   head.append(element('th', 'Giver ↓ / Recipient →'));
-  for (const name of names) {
-    const th = element('th', name);
+  names.forEach((name, j) => {
+    const th = element('th');
     th.scope = 'col';
+    th.append(lineButton(name, 'column', j));
+    lines.columns[j].push(th);
     head.append(th);
-  }
+  });
   const body = table.createTBody();
   names.forEach((giver, i) => {
     const tr = body.insertRow();
-    const th = element('th', giver);
+    const th = element('th');
     th.scope = 'row';
+    th.append(lineButton(giver, 'row', i));
+    lines.rows[i].push(th);
     tr.append(th);
     cells[i] = names.map((recipient, j) => {
       const button = element('button');
       button.type = 'button';
       button.disabled = i === j;
       button.addEventListener('click', () => openClue(giver, recipient));
-      tr.insertCell().append(button);
+      const cell = tr.insertCell();
+      cell.dataset.row = i;
+      cell.dataset.column = j;
+      cell.append(button);
+      lines.rows[i].push(cell);
+      lines.columns[j].push(cell);
       return button;
     });
   });
+  table.addEventListener('pointerover', event => hover(event.target.closest('[data-row], [data-column]')));
+  table.addEventListener('focusin', event => hover(event.target.closest('[data-row], [data-column]')));
+  table.addEventListener('pointerleave', () => hover(null));
+  table.addEventListener('focusout', event => { if (!table.contains(event.relatedTarget)) hover(null); });
   matrix.append(table);
+  paintLines();
+}
+function lineButton(name, kind, index) {
+  const button = element('button', name, 'line-toggle');
+  button.type = 'button';
+  button.dataset[kind] = index;
+  button.addEventListener('click', () => {
+    if (kind === 'row') selectedRow = selectedRow === name ? null : name;
+    else selectedColumn = selectedColumn === name ? null : name;
+    paintLines();
+  });
+  return button;
+}
+function hover(target) {
+  hovered = target ? { row: target.dataset.row, column: target.dataset.column } : null;
+  paintLines();
+}
+function paintLines() {
+  const names = group.participants;
+  const row = names.indexOf(selectedRow), column = names.indexOf(selectedColumn);
+  if (row < 0) selectedRow = null;
+  if (column < 0) selectedColumn = null;
+  for (const kind of ['rows', 'columns']) lines[kind].flat().forEach(node => node.classList.remove(`hover-${kind}`, `selected-${kind}`));
+  if (hovered?.row !== undefined) lines.rows[hovered.row]?.forEach(node => node.classList.add('hover-rows'));
+  if (hovered?.column !== undefined) lines.columns[hovered.column]?.forEach(node => node.classList.add('hover-columns'));
+  if (row >= 0) lines.rows[row].forEach(node => node.classList.add('selected-rows'));
+  if (column >= 0) lines.columns[column].forEach(node => node.classList.add('selected-columns'));
+  document.querySelectorAll('.line-toggle').forEach(button => {
+    const selected = button.dataset.row !== undefined ? Number(button.dataset.row) === row : Number(button.dataset.column) === column;
+    button.setAttribute('aria-pressed', selected);
+  });
 }
 function renderCells(probabilities) {
   const names = group.participants;
@@ -152,71 +199,105 @@ function renderGroup() {
   $('empty').hidden = true;
   board.hidden = false;
   slider.max = group.participants.length;
+  syncRecommendationControls();
   makeMatrix();
   renderCells();
   startAnalysis();
 }
-function renderCards(cards) {
+function cardShells() {
+  return [...$('cards').children];
+}
+function setCardsLoading(text) {
+  $('cards').classList.add('loading');
+  $('cards').setAttribute('aria-busy', 'true');
+  $('recommendation-status').textContent = text;
+}
+function resetCards(text) {
+  $('cards').classList.remove('loading', 'team-cards');
+  $('cards').removeAttribute('aria-busy');
+  cardShells().forEach((card, i) => card.replaceChildren(element('h3', i ? 'Unique recipients' : 'Repeats allowed'), element('p', text, 'card-placeholder')));
+}
+function renderCards(cards, cardMode, team) {
   const open = Array.from($('cards').querySelectorAll('details'), item => item.open);
-  const content = [];
-  for (const objective of ['expected', 'tail']) cards.forEach((result, i) => {
-    const card = element('article', undefined, 'card'), pick = result[objective];
-    const heading = element('h3', `${objective === 'expected' ? 'Highest expected score' : 'Best chance to beat target'} · ${i ? 'Unique recipients' : 'Repeats allowed'}`);
-    const exact = objective === 'expected' || pick.method === 'exact';
-    const value = element('strong', objective === 'expected' ? `${pick.score.toFixed(2)} / ${group.participants.length}` : percent(pick.probability));
-    const tag = element('p', exact ? 'Optimal under this model' : 'Approximate search. Chance shown for this ballot.', 'tag');
-    const details = element('details');
-    details.open = open[content.length] ?? true;
-    const list = element('ol');
-    pick.guess.forEach((recipient, index) => {
-      const p = probabilities[index][recipient];
-      const item = element('li', `${group.participants[index]} → ${group.participants[recipient]} · ${percent(p)}`);
-      item.style.setProperty('--p', p);
-      list.append(item);
+  cardShells().forEach((card, i) => {
+    const pick = cards[i];
+    const objective = cardMode === 'expected' ? 'Highest expected score' : 'Best chance to beat target';
+    const heading = element('h3', `${i ? 'Unique recipients' : 'Repeats allowed'} · ${objective}`);
+    const value = team ? pick.team.value : cardMode === 'expected' ? pick.score : pick.probability;
+    const solo = team ? pick.team.solo : undefined;
+    const exact = !team && (cardMode === 'expected' || pick.method === 'exact');
+    const strong = element('strong', cardMode === 'expected' ? `${value.toFixed(2)} / ${group.participants.length}` : percent(value));
+    const comparison = team ? ` Team score shown. Same ballot twice: ${cardMode === 'expected' ? solo.toFixed(2) : percent(solo)}.` : '';
+    const tag = element('p', exact ? 'Optimal under this model' : `Approximate search. Exact value for these ballots.${comparison}`, 'tag');
+    const ballots = element('div', undefined, 'ballots');
+    pick.ballots.forEach((guess, ballotIndex) => {
+      const details = element('details');
+      details.open = open[i * 2 + ballotIndex] ?? true;
+      const list = element('ol');
+      guess.forEach((recipient, index) => {
+        const p = probabilities[index][recipient];
+        const item = element('li', `${group.participants[index]} → ${group.participants[recipient]} · ${percent(p)}`);
+        item.style.setProperty('--p', p);
+        list.append(item);
+      });
+      details.append(element('summary', team ? `Ballot ${ballotIndex + 1}` : 'View ballot'), list);
+      ballots.append(details);
     });
-    details.append(element('summary', 'View ballot'), list);
-    card.append(heading, value, tag, details);
-    content.push(card);
+    card.replaceChildren(heading, strong, tag, ballots);
   });
-  $('cards').replaceChildren(...content);
+  $('cards').classList.toggle('team-cards', team);
+  $('cards').classList.remove('loading');
+  $('cards').removeAttribute('aria-busy');
+  $('recommendation-status').textContent = '';
+}
+function syncRecommendationControls() {
+  $('expected-mode').setAttribute('aria-pressed', mode === 'expected');
+  $('target-mode').setAttribute('aria-pressed', mode === 'tail');
+  $('target-controls').hidden = mode !== 'tail';
+  $('team').checked = group.team;
 }
 function requestTarget() {
   if (!modelReady) return;
   computedTarget = target();
-  $('recommendation-status').textContent = 'Updating target recommendations…';
-  worker.postMessage({ token: ++token, target: computedTarget });
+  computedMode = mode;
+  computedTeam = group.team;
+  setCardsLoading('Updating recommendations…');
+  worker.postMessage({ token: ++token, target: computedTarget, mode, team: group.team });
 }
 function startAnalysis() {
   clearTimeout(sliderTimer);
   worker?.terminate();
   modelReady = false;
   showTarget();
-  $('cards').replaceChildren();
+  setCardsLoading('Calculating recommendations…');
   $('analysis-status').textContent = 'Calculating probabilities…';
-  $('recommendation-status').textContent = '';
   worker = new Worker('./worker.js', { type: 'module' });
   worker.onerror = () => { $('analysis-status').textContent = 'Could not run the probability calculator.'; };
   worker.onmessage = ({ data }) => {
     if (data.token !== token) return;
     if (data.error) {
       $('analysis-status').textContent = `Calculation failed: ${data.error}`;
+      resetCards('Recommendations unavailable.');
       $('recommendation-status').textContent = '';
     } else if (data.status) {
       modelReady = data.status === 'ok';
       $('analysis-status').textContent = data.status === 'insufficient' ? 'Add at least two participants.' : data.status === 'infeasible' ? 'No assignment fits these confirmed pairs and exclusions. Change a clue or use Undo.' : '';
-      if (modelReady) {
+      if (!modelReady) {
+        resetCards(data.status === 'insufficient' ? 'Add at least two participants.' : 'No valid assignment.');
+        $('recommendation-status').textContent = '';
+      } else {
         probabilities = data.matrix;
         renderCells(data.matrix);
-        $('recommendation-status').textContent = 'Calculating recommendations…';
-        if (computedTarget !== target()) requestTarget();
+        if (computedTarget !== target() || computedMode !== mode || computedTeam !== group.team) requestTarget();
       }
-    } else if (data.cards && computedTarget === target()) {
-      $('recommendation-status').textContent = '';
-      renderCards(data.cards);
+    } else if (data.cards && data.mode === mode && data.team === group.team && (mode === 'expected' || computedTarget === target())) {
+      renderCards(data.cards, data.mode, data.team);
     }
   };
   computedTarget = target();
-  worker.postMessage({ token: ++token, group, target: computedTarget });
+  computedMode = mode;
+  computedTeam = group.team;
+  worker.postMessage({ token: ++token, group, target: computedTarget, mode, team: group.team });
 }
 
 beforeUnloadRegistration();
@@ -227,10 +308,21 @@ function beforeUnloadRegistration() {
 }
 slider.oninput = () => {
   showTarget();
-  for (const card of [...$('cards').children].slice(2)) card.hidden = true;
-  if (modelReady) $('recommendation-status').textContent = 'Updating target recommendations…';
+  if (modelReady) setCardsLoading('Updating target recommendations…');
   clearTimeout(sliderTimer);
   sliderTimer = setTimeout(requestTarget, 120);
+};
+function setMode(next) {
+  if (mode === next) return;
+  mode = next;
+  syncRecommendationControls();
+  requestTarget();
+}
+$('expected-mode').onclick = () => setMode('expected');
+$('target-mode').onclick = () => setMode('tail');
+$('team').onchange = event => {
+  edit({ ...group, team: event.target.checked }, 'recommendations');
+  syncRecommendationControls();
 };
 groups.onchange = async () => {
   const id = groups.value;

@@ -26,18 +26,26 @@
     <section id="empty" class="panel section" hidden><h2>No group selected</h2><p>Start a group for your celebration, then add the people taking part.</p></section>
     <div id="board" hidden>
       <section class="panel section" aria-labelledby="matrix-title">
-        <div class="section-head"><div><h2 id="matrix-title">Probability matrix</h2><p>Rows give. Columns receive. Select a cell to choose its clue.</p></div><button id="roster" type="button">Edit participants</button></div>
+        <div class="section-head"><h2 id="matrix-title">Probability matrix</h2><button id="roster" type="button">Edit participants</button></div>
         <p class="legend"><span>○ Unknown</span><span>× Excluded</span><span>✓ Confirmed</span><span>↑ More likely</span><span>↓ Less likely</span></p>
         <div id="matrix-scroll" class="matrix-scroll"></div>
         <p id="analysis-status" role="status"></p>
       </section>
       <section id="recommendations" class="panel section" aria-labelledby="recommendation-title">
         <h2 id="recommendation-title">Recommended guesses</h2>
-        <p>For now, the model starts by weighting every valid assignment equally before applying your clues. This is not a verified description of how DrawNames draws names.</p>
-        <label class="slider">Target score <output id="target-value" for="target">0</output><input id="target" type="range" min="0" max="0" value="0" step="1"></label>
-        <p id="target-description"></p>
-        <p id="recommendation-status" role="status"></p>
-        <div id="cards" class="cards"></div>
+        <div class="recommendation-controls">
+          <div class="segmented" role="group" aria-label="Recommendation objective">
+            <button id="expected-mode" type="button" aria-pressed="true">Expected score</button>
+            <button id="target-mode" type="button" aria-pressed="false">Beat target</button>
+          </div>
+          <label class="switch"><input id="team" type="checkbox"> Team of 2</label>
+          <label id="target-controls" class="slider" hidden>Target score <output id="target-value" for="target">0</output><input id="target" type="range" min="0" max="0" value="0" step="1"></label>
+        </div>
+        <p id="recommendation-status" class="visually-hidden" role="status"></p>
+        <div id="cards" class="cards" aria-live="polite">
+          <article class="card" data-card="0"><h3>Repeats allowed</h3><p class="card-placeholder">Waiting for probabilities…</p></article>
+          <article class="card" data-card="1"><h3>Unique recipients</h3><p class="card-placeholder">Waiting for probabilities…</p></article>
+        </div>
       </section>
     </div>
   </main>

@@ -263,3 +263,104 @@ export function recommendations(dist, target, average) {
   }
   return cards;
 }
+
+function layers(n) {
+  const full = (1 << n) - 1, size = new Uint8Array(full + 1), rank = new Int32Array(full + 1);
+  const masks = Array.from({ length: n + 1 }, () => []);
+  for (let mask = 0; mask <= full; mask++) {
+    if (mask) size[mask] = size[mask >> 1] + (mask & 1);
+    rank[mask] = masks[size[mask]].push(mask) - 1;
+  }
+  return { masks, rank };
+}
+
+// Exact joint walk over draws. Expected uses D = S2 - S1 because E[max] = E[S1] + E[max(D, 0)].
+export function teamValue(dist, [a, b], target) {
+  const n = a.length, { masks, rank } = layers(n), { weights, suffix } = dist;
+  const tail = target !== undefined, side = tail ? target + 1 : 2 * n + 1, states = tail ? side * side : side;
+  let current = new Float64Array(states), won = 0;
+  current[tail ? 0 : n] = 1;
+  for (let k = 0; k < n; k++) {
+    const next = new Float64Array(masks[k + 1].length * states);
+    masks[k].forEach((mask, index) => {
+      if (!suffix[mask]) return;
+      const from = index * states;
+      for (let j = 0; j < n; j++) {
+        const bit = 1 << j, to = mask | bit, weight = weights[k][j];
+        if (mask & bit || !weight || !suffix[to]) continue;
+        const h1 = Number(a[k] === j), h2 = Number(b[k] === j), base = rank[to] * states;
+        for (let state = 0; state < states; state++) {
+          const mass = current[from + state];
+          if (!mass) continue;
+          if (!tail) next[base + state + h2 - h1] += mass * weight;
+          else {
+            const x = Math.floor(state / side) + h1, y = state % side + h2;
+            if (x > target || y > target) won += mass * weight * suffix[to];
+            else next[base + x * side + y] += mass * weight;
+          }
+        }
+      }
+    });
+    current = next;
+  }
+  if (tail) return Math.min(1, won / suffix[0]);
+  let gain = 0;
+  for (let d = 1; d <= n; d++) gain += d * current[n + d];
+  return expected(dist.matrix, a) + gain / suffix[0];
+}
+
+function teamSearch(dist, unique, start, target) {
+  const n = start.length, rng = random(91357), samples = Array.from({ length: 5000 }, () => draw(dist, rng));
+  const buckets = Array.from({ length: n }, () => Array.from({ length: n }, () => []));
+  samples.forEach((actual, sample) => actual.forEach((j, i) => buckets[i][j].push(sample)));
+  const value = target === undefined ? (x, y) => Math.max(x, y) : (x, y) => Number(Math.max(x, y) > target) + 1e-4 * Math.max(x, y);
+  const hits = ballot => samples.map(actual => actual.reduce((sum, j, i) => sum + (ballot[i] === j), 0));
+  const ballots = [start.slice(), start.slice()], counts = [hits(start), hits(start)];
+  function improve(which) {
+    const ballot = ballots[which], mine = counts[which], other = counts[1 - which];
+    let improved = false;
+    function tryMove(changes) {
+      const delta = new Map();
+      for (const [row, from, to] of changes) {
+        for (const sample of buckets[row][from]) delta.set(sample, (delta.get(sample) ?? 0) - 1);
+        for (const sample of buckets[row][to]) delta.set(sample, (delta.get(sample) ?? 0) + 1);
+      }
+      let gain = 0;
+      for (const [sample, change] of delta) gain += value(mine[sample] + change, other[sample]) - value(mine[sample], other[sample]);
+      if (gain <= 1e-9) return false;
+      for (const [sample, change] of delta) mine[sample] += change;
+      for (const [row, , to] of changes) ballot[row] = to;
+      return improved = true;
+    }
+    for (let pass = 0; pass < 6; pass++) {
+      let changed = false;
+      for (let i = 0; i < n; i++) {
+        for (let j = unique ? i + 1 : 0; j < n; j++) {
+          if (unique) changed = tryMove([[i, ballot[i], ballot[j]], [j, ballot[j], ballot[i]]]) || changed;
+          else if (ballot[i] !== j) changed = tryMove([[i, ballot[i], j]]) || changed;
+        }
+      }
+      if (!changed) break;
+    }
+    return improved;
+  }
+  for (let round = 0; round < 4 && (improve(1) | improve(0)); round++);
+  return ballots;
+}
+
+export function teamRecommendation(dist, unique, solo, target) {
+  const score = pair => teamValue(dist, pair, target);
+  if (target === dist.matrix.length) return { ballots: [solo, solo], value: 0, solo: 0, method: 'exact' };
+  const soloValue = score([solo, solo]), rng = random(44021);
+  const candidates = [teamSearch(dist, unique, solo, target)];
+  for (let i = 0; i < 64; i++) {
+    const alternative = draw(dist, rng);
+    if (String(alternative) !== String(solo)) { candidates.push([solo, alternative]); break; }
+  }
+  let best = { ballots: [solo, solo], value: soloValue };
+  for (const ballots of candidates) {
+    const value = score(ballots);
+    if (value > best.value) best = { ballots, value };
+  }
+  return { ...best, solo: soloValue, method: 'heuristic' };
+}

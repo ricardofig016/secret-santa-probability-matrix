@@ -17,7 +17,9 @@ Open <http://127.0.0.1:8765/>. Keep the terminal open while you use the page. Ru
 
 1. Choose **New group** and add the participants, one name per line. The board supports up to 18 people. Use the **Group** dropdown to switch celebrations.
 2. Select a matrix cell to open its clue menu. Rows give and columns receive. Use **Definitely excluded** and **Confirmed** for facts. Relative clues multiply the odds by ¼, ½, 2, or 4 without locking in a percentage.
-3. Compare four ballots below the matrix. Expected-score ballots maximize the average number of correct pairs under the model. Target-score ballots aim to score strictly above the slider value. Each objective has a repeats-allowed ballot and a unique-recipient ballot. The target is a score to beat, not a prediction of how someone else will score.
+3. Choose **Expected score** or **Beat target** below the matrix. Expected-score ballots maximize the average number of correct pairs under the model. Target-score ballots aim to score strictly above the slider value. Each objective has a repeats-allowed ballot and a unique-recipient ballot. The target is a score to beat, not a prediction of how someone else will score.
+4. Click a name in the matrix header to highlight its row or column. Click it again to clear the highlight.
+5. Turn on **Team of 2** when two people share points and submit separate ballots. The setting is saved with the group. The app chooses the two ballots together and scores each draw by the better ballot.
 
 The server saves each group to a separate YAML file in the `data` folder. Run only one server for that folder and avoid editing its files while the app is open. Wait for **Saved** before closing. **Undo** restores the last edit and autosaves the restored inputs. Group switching waits for saves. If a save fails, use **Retry save**. If another tab has saved a newer version, **Reload saved group** discards your unsaved edits after asking for confirmation.
 

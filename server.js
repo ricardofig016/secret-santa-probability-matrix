@@ -91,7 +91,7 @@ export function makeServer(directory = join(root, 'data')) {
         }
         if (method === 'POST') {
           const { name } = await body(req);
-          const group = validated({ name, participants: [], pairs: [] });
+          const group = validated({ name, participants: [], team: false, pairs: [] });
           return send(201, await serial(() => save(`${randomUUID()}.yaml`, group)));
         }
       }
