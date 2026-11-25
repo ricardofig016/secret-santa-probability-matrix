@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Secret Santa | Guessing board</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="masthead"><div class="wrap">
+    <p class="eyebrow">DrawNames Portugal · Local guessing board</p>
+    <h1>Secret Santa</h1>
+  </div></header>
+  <main class="wrap">
+    <section class="panel toolbar" aria-label="Group controls">
+      <label>Group <select id="groups" disabled><option>Loading…</option></select></label>
+      <button id="new" type="button" disabled>New group</button>
+      <button id="undo" type="button" disabled>Undo</button>
+      <button id="retry" type="button" hidden>Retry save</button>
+      <button id="reload-group" type="button" hidden>Reload saved group</button>
+      <span id="save-status" role="status"></span>
+      <a href="#recommendations">Jump to recommendations ↓</a>
+    </section>
+    <p id="message" class="notice" role="alert" hidden></p>
+    <section id="empty" class="panel section" hidden><h2>No group selected</h2><p>Start a group for your celebration, then add the people taking part.</p></section>
+    <div id="board" hidden>
+      <section class="panel section" aria-labelledby="matrix-title">
+        <div class="section-head"><div><h2 id="matrix-title">Probability matrix</h2><p>Rows give. Columns receive. Select a cell to choose its clue.</p></div><button id="roster" type="button">Edit participants</button></div>
+        <p class="legend"><span>○ Unknown</span><span>× Excluded</span><span>✓ Confirmed</span><span>↑ More likely</span><span>↓ Less likely</span></p>
+        <div id="matrix-scroll" class="matrix-scroll"></div>
+        <p id="analysis-status" role="status"></p>
+      </section>
+      <section id="recommendations" class="panel section" aria-labelledby="recommendation-title">
+        <h2 id="recommendation-title">Recommended guesses</h2>
+        <p>For now, the model starts by weighting every valid assignment equally before applying your clues. This is not a verified description of how DrawNames draws names.</p>
+        <label class="slider">Target score <output id="target-value" for="target">0</output><input id="target" type="range" min="0" max="0" value="0" step="1"></label>
+        <p id="target-description"></p>
+        <p id="recommendation-status" role="status"></p>
+        <div id="cards" class="cards"></div>
+      </section>
+    </div>
+  </main>
+  <dialog id="clue-dialog" aria-labelledby="clue-title"><form id="clue-form">
+    <h2 id="clue-title">Edit clue</h2><p id="clue-pair"></p>
+    <label for="clue-state">Clue</label><select id="clue-state" name="clue" aria-describedby="clue-help"></select>
+    <p id="clue-help">Relative clues reweight this pair's odds; they don't set its probability.</p>
+    <div class="actions"><button type="button" data-close>Cancel</button><button type="submit">Save clue</button></div>
+  </form></dialog>
+  <dialog id="create-dialog"><form id="create-form">
+    <h2>New group</h2><label>Celebration name <input name="name" maxlength="80" required></label>
+    <p class="form-error" role="alert" hidden></p>
+    <div class="actions"><button type="button" data-close>Cancel</button><button type="submit">Create group</button></div>
+  </form></dialog>
+  <dialog id="roster-dialog"><form id="roster-form">
+    <h2>Edit participants</h2><label>One name per line <textarea name="participants" rows="9" spellcheck="false"></textarea></label>
+    <p>Removing or changing a name clears its clues. Undo can restore them.</p>
+    <p class="form-error" role="alert" hidden></p>
+    <div class="actions"><button type="button" data-close>Cancel</button><button type="submit">Save participants</button></div>
+  </form></dialog>
+</body>
+</html>

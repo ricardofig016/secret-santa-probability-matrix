@@ -1,0 +1,4 @@
+node_modules/
+data/*.yaml
+data/*.yml
+data/*.tmp
