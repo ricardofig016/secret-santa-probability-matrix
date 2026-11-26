@@ -39,7 +39,7 @@ h2 {
 
 .wrap {
   width: fit-content;
-  min-width: min(100%, 92rem);
+  min-width: min(100%, 72rem);
   margin: auto;
   padding: 0 clamp(0.5rem, 1.5vw, 1.5rem);
 }
@@ -216,7 +216,6 @@ td {
 }
 
 th {
-  transition: background-color 120ms ease;
   width: 5.1rem;
   padding: 0.4rem;
   overflow-wrap: anywhere;
@@ -247,7 +246,7 @@ thead th:first-child {
 }
 
 td button {
-  transition: background-color 120ms ease, box-shadow 120ms ease, color 120ms ease;
+  transition: none;
   width: 100%;
   min-height: 2.75rem;
   padding: 0.2rem;
@@ -310,10 +309,6 @@ td.selected-rows.selected-columns button {
   border-radius: 0.3rem;
   cursor: pointer;
   font-weight: 700;
-}
-
-.line-toggle {
-  transition: background-color 120ms ease;
 }
 
 .line-toggle:hover {
@@ -412,6 +407,8 @@ td.selected-rows.selected-columns button {
 }
 
 .cards {
+  width: 0;
+  min-width: 100%;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.8rem;

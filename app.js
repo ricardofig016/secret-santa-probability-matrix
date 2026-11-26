@@ -92,7 +92,9 @@ function makeMatrix() {
   table.setAttribute('aria-label', 'Probability that each giver draws each recipient');
   lines = { rows: names.map(() => []), columns: names.map(() => []) };
   const head = table.createTHead().insertRow();
-  head.append(element('th', 'Giver ↓ / Recipient →'));
+  const corner = element('th');
+  corner.append('Recipient →', document.createElement('br'), 'Giver ↓');
+  head.append(corner);
   names.forEach((name, j) => {
     const th = element('th');
     th.scope = 'col';
@@ -295,11 +297,11 @@ function renderCards(cards, cardMode, team, keepDeep = false) {
     const heading = element('h3', `${i ? 'Unique recipients' : 'Repeats allowed'} · ${objective}`);
     const value = team ? pick.team.value : cardMode === 'expected' ? pick.score : pick.probability;
     const solo = team ? pick.team.solo : undefined;
-    const exact = !team && (cardMode === 'expected' || pick.method === 'exact');
+    const exact = (!team && (cardMode === 'expected' || pick.method === 'exact')) || (cardMode === 'tail' && value >= 1);
     const strong = element('strong', cardMode === 'expected' ? `${value.toFixed(2)} / ${group.participants.length}` : percent(value));
     const bound = team && pick.team.bound !== undefined ? ` Upper bound: ${(Math.ceil(pick.team.bound * 100 - 1e-9) / 100).toFixed(2)}.` : '';
-    const comparison = team ? ` Team score shown. Same ballot twice: ${cardMode === 'expected' ? solo.toFixed(2) : percent(solo)}.${bound}` : '';
-    const tag = element('p', exact ? 'Optimal under this model' : `Approximate search. Exact value for these ballots.${comparison}`, 'tag');
+    const comparison = team ? `Same ballot twice: ${cardMode === 'expected' ? solo.toFixed(2) : percent(solo)}.${bound}` : '';
+    const tag = element('p', exact ? 'Optimal under this model' : comparison, 'tag');
     const deepControls = element('div', undefined, 'deep-controls');
     if (team) {
       const button = element('button', deepWorkers[i] ? 'Cancel' : 'Deep search', 'deep-search');
