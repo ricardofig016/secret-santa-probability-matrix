@@ -460,6 +460,65 @@ td.selected-rows.selected-columns button {
   margin-top: 0.55rem;
 }
 
+.duration {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.duration[hidden] {
+  display: none;
+}
+
+.duration select {
+  padding: 0.25rem 0.45rem;
+}
+
+.distribution {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin: 0 0 0.75rem;
+}
+
+.distribution-item {
+  display: grid;
+  gap: 0.05rem;
+  padding: 0.3rem 0.45rem;
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, #9ed5af calc(var(--p, 0) * 85%), white);
+  font-size: 0.78rem;
+  transition: background-color 150ms ease;
+}
+
+.card .distribution-item strong {
+  font-size: 0.95rem;
+}
+
+.deep-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin: -0.2rem 0 0.65rem;
+}
+
+.deep-search {
+  padding: 0.25rem 0.65rem;
+  font-size: 0.85rem;
+}
+
+.deep-status {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.card.searching {
+  border-color: #8bb9a2;
+}
+
 .ballots {
   display: grid;
   gap: 0.6rem;

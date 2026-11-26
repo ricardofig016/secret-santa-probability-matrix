@@ -5,7 +5,7 @@ const groups = $('groups'), board = $('board'), slider = $('target'), matrix = $
 const createForm = $('create-form'), rosterForm = $('roster-form'), clueForm = $('clue-form');
 let listing = [], selected, group, revision, history = [], generation = 0, saved = 0;
 let mode = 'expected', computedMode, computedTeam, saving = false, saveError = '', conflict = false, changing = false;
-let worker, token = 0, modelReady = false, probabilities, hovered = null, selectedRow = null, selectedColumn = null, lines = { rows: [], columns: [] }, computedTarget, sliderTimer, cells = [], clueCell;
+let deepStatus = [], deepWorkers = [], deepToken = 0, cardsReady = false, cardGeneration = 0, lastContext, lastCards, lastCardMode, lastTeam, worker, token = 0, modelReady = false, probabilities, hovered = null, selectedRow = null, selectedColumn = null, lines = { rows: [], columns: [] }, computedTarget, sliderTimer, cells = [], clueCell;
 const samePair = (item, giver, recipient) => item.giver === giver && item.recipient === recipient;
 const percent = p => p > 0 && p < 0.0001 ? '<0.01%' : p < 1 && p > 0.9999 ? '>99.99%' : `${Number((p * 100).toFixed(2))}%`;
 
@@ -208,8 +208,12 @@ function cardShells() {
   return [...$('cards').children];
 }
 function setCardsLoading(text) {
+  cardsReady = false;
+  cardGeneration++;
+  stopDeepSearch();
   $('cards').classList.add('loading');
   $('cards').setAttribute('aria-busy', 'true');
+  $('cards').querySelectorAll('.deep-search').forEach(button => { button.disabled = true; });
   $('recommendation-status').textContent = text;
 }
 function resetCards(text) {
@@ -217,7 +221,73 @@ function resetCards(text) {
   $('cards').removeAttribute('aria-busy');
   cardShells().forEach((card, i) => card.replaceChildren(element('h3', i ? 'Unique recipients' : 'Repeats allowed'), element('p', text, 'card-placeholder')));
 }
-function renderCards(cards, cardMode, team) {
+function stopDeepSearch() {
+  deepWorkers.forEach(job => { if (job) { clearTimeout(job.deadline); job.worker.terminate(); } });
+  deepWorkers = [];
+}
+function startDeepSearch(index) {
+  if (!cardsReady || !lastContext || lastContext.generation !== cardGeneration) return;
+  const context = lastContext, pick = lastCards[index], card = cardShells()[index], token = ++deepToken, deep = new Worker('./deep-worker.js', { type: 'module' });
+  deepWorkers[index]?.worker.terminate();
+  const finish = message => {
+    clearTimeout(deadline);
+    if (deepWorkers[index]?.token !== token || lastContext !== context || context.generation !== cardGeneration) return deep.terminate();
+    deep.terminate();
+    deepWorkers[index] = null;
+    const current = cardShells()[index];
+    current.classList.remove('searching');
+    current.querySelector('.deep-search').textContent = 'Deep search';
+    deepStatus[index] = message;
+    current.querySelector('.deep-status').textContent = message;
+  };
+  const budgetMs = Number($('deep-duration').value), budget = durationLabel(budgetMs);
+  const deadline = setTimeout(() => finish(lastCards[index].team.value > pick.team.value ? `Stopped at ${budget}. Best pair kept. Not proven optimal.` : `Stopped at ${budget}. No better pair found. Not proven optimal.`), budgetMs);
+  deepWorkers[index] = { worker: deep, token, deadline };
+  deep.onerror = () => finish('Deep search failed.');
+  card.classList.add('searching');
+  deepStatus[index] = `Deep search running for up to ${budget}…`;
+  card.querySelector('.deep-status').textContent = deepStatus[index];
+  card.querySelector('.deep-search').textContent = 'Cancel';
+  deep.onmessage = ({ data }) => {
+    if (deepWorkers[index]?.token !== token || !cardsReady || lastContext !== context || context.generation !== cardGeneration) {
+      deep.terminate();
+      return;
+    }
+    if (data.type === 'error') return finish(`Deep search failed: ${data.error}`);
+    if (data.value > pick.team.value) {
+      lastCards[index] = { ...pick, ballots: data.ballots, distribution: data.distribution, team: { ...pick.team, ballots: data.ballots, value: data.value, method: data.method } };
+      renderCards(lastCards, lastCardMode, lastTeam, true);
+    }
+    const current = cardShells()[index];
+    if (data.type === 'progress' && lastCards[index].team.value > pick.team.value) current.querySelector('.deep-status').textContent = deepStatus[index] = `Improved after ${(data.elapsedMs / 1000).toFixed(1)}s. Still searching for up to ${budget}…`;
+    if (data.type === 'done') finish(lastCards[index].team.value > pick.team.value ? `Deep search improved this pair in ${(data.elapsedMs / 1000).toFixed(1)}s. Not proven optimal.` : `Deep search found no better pair in ${budget}. Not proven optimal.`);
+  };
+  deep.postMessage({ group: context.group, unique: Boolean(index), solo: pick.solo, target: context.target, budgetMs });
+}
+function durationLabel(ms) {
+  return ms < 60000 ? `${ms / 1000}s` : `${ms / 60000} min`;
+}
+function distributionView(distribution) {
+  const view = element('div', undefined, 'distribution');
+  view.setAttribute('aria-label', 'Chance of reaching each score');
+  for (const { score, probability } of distribution) {
+    const item = element('div', undefined, 'distribution-item');
+    item.style.setProperty('--p', probability);
+    item.append(element('span', `${score}+`), element('strong', percent(probability)));
+    view.append(item);
+  }
+  return view;
+}
+function renderCards(cards, cardMode, team, keepDeep = false) {
+  if (!keepDeep) {
+    stopDeepSearch();
+    deepStatus = [];
+  }
+  lastCards = cards;
+  lastCardMode = cardMode;
+  lastTeam = team;
+  if (!keepDeep) lastContext = { generation: cardGeneration, group: structuredClone(group), target: cardMode === 'tail' ? computedTarget : undefined };
+  cardsReady = true;
   const open = Array.from($('cards').querySelectorAll('details'), item => item.open);
   cardShells().forEach((card, i) => {
     const pick = cards[i];
@@ -227,8 +297,26 @@ function renderCards(cards, cardMode, team) {
     const solo = team ? pick.team.solo : undefined;
     const exact = !team && (cardMode === 'expected' || pick.method === 'exact');
     const strong = element('strong', cardMode === 'expected' ? `${value.toFixed(2)} / ${group.participants.length}` : percent(value));
-    const comparison = team ? ` Team score shown. Same ballot twice: ${cardMode === 'expected' ? solo.toFixed(2) : percent(solo)}.` : '';
+    const bound = team && pick.team.bound !== undefined ? ` Upper bound: ${(Math.ceil(pick.team.bound * 100 - 1e-9) / 100).toFixed(2)}.` : '';
+    const comparison = team ? ` Team score shown. Same ballot twice: ${cardMode === 'expected' ? solo.toFixed(2) : percent(solo)}.${bound}` : '';
     const tag = element('p', exact ? 'Optimal under this model' : `Approximate search. Exact value for these ballots.${comparison}`, 'tag');
+    const deepControls = element('div', undefined, 'deep-controls');
+    if (team) {
+      const button = element('button', deepWorkers[i] ? 'Cancel' : 'Deep search', 'deep-search');
+      button.disabled = !cardsReady;
+      button.type = 'button';
+      button.onclick = () => {
+        if (!deepWorkers[i]) return startDeepSearch(i);
+        clearTimeout(deepWorkers[i].deadline);
+        deepWorkers[i].worker.terminate();
+        deepWorkers[i] = null;
+        card.classList.remove('searching');
+        button.textContent = 'Deep search';
+        status.textContent = deepStatus[i] = 'Deep search cancelled. Best pair kept.';
+      };
+      const status = element('span', deepStatus[i] ?? `Up to ${durationLabel(Number($('deep-duration').value))}`, 'deep-status');
+      deepControls.append(button, status);
+    }
     const ballots = element('div', undefined, 'ballots');
     pick.ballots.forEach((guess, ballotIndex) => {
       const details = element('details');
@@ -243,7 +331,8 @@ function renderCards(cards, cardMode, team) {
       details.append(element('summary', team ? `Ballot ${ballotIndex + 1}` : 'View ballot'), list);
       ballots.append(details);
     });
-    card.replaceChildren(heading, strong, tag, ballots);
+    card.classList.toggle('searching', Boolean(deepWorkers[i]));
+    card.replaceChildren(heading, strong, tag, distributionView(pick.distribution), ...(team ? [deepControls] : []), ballots);
   });
   $('cards').classList.toggle('team-cards', team);
   $('cards').classList.remove('loading');
@@ -255,9 +344,11 @@ function syncRecommendationControls() {
   $('target-mode').setAttribute('aria-pressed', mode === 'tail');
   $('target-controls').hidden = mode !== 'tail';
   $('team').checked = group.team;
+  $('deep-duration').closest('label').hidden = !group.team;
 }
 function requestTarget() {
   if (!modelReady) return;
+  stopDeepSearch();
   computedTarget = target();
   computedMode = mode;
   computedTeam = group.team;
@@ -265,6 +356,7 @@ function requestTarget() {
   worker.postMessage({ token: ++token, target: computedTarget, mode, team: group.team });
 }
 function startAnalysis() {
+  stopDeepSearch();
   clearTimeout(sliderTimer);
   worker?.terminate();
   modelReady = false;
@@ -318,6 +410,13 @@ function setMode(next) {
   syncRecommendationControls();
   requestTarget();
 }
+$('deep-duration').onchange = () => {
+  const label = `Up to ${durationLabel(Number($('deep-duration').value))}`;
+  cardShells().forEach((card, index) => {
+    const status = card.querySelector('.deep-status');
+    if (status && !deepWorkers[index] && /^Up to /.test(status.textContent)) status.textContent = label;
+  });
+};
 $('expected-mode').onclick = () => setMode('expected');
 $('target-mode').onclick = () => setMode('tail');
 $('team').onchange = event => {

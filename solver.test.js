@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { bestExpected, expected, model, recommendations, tailProbability, teamRecommendation, teamValue } from './solver.js';
+import { TEAM_ALGORITHMS, deepTeamSearch, exhaustiveTeam, partitionMatrices, rowUpperBound, teamDistribution, uniqueFlowUpperBound } from './team-search.js';
 
 const group = (participants = ['A', 'B', 'C', 'D'], pairs = []) => ({ name: 'Christmas', participants, team: false, pairs });
 const pair = (giver, recipient, state) => ({ giver, recipient, state });
@@ -134,4 +135,62 @@ test('team perfect-score search can cover a second valid draw', () => {
   const dist = model(group(Array.from({ length: 9 }, (_, i) => `${i}`)));
   const solo = recommendations(dist, 8)[0].tail.guess, team = teamRecommendation(dist, false, solo, 8);
   near(team.value, 2 * team.solo);
+});
+
+test('team partition matrices split each exact edge probability', () => {
+  const dist = model(group(['A', 'B', 'C', 'D', 'E'], [pair('A', 'B', 'more'), pair('C', 'D', 'excluded')]));
+  const [wonA, wonB] = partitionMatrices(dist, [[1, 0, 3, 4, 2], [2, 3, 4, 1, 0]]);
+  const ballotsPair = [[1, 0, 3, 4, 2], [2, 3, 4, 1, 0]];
+  const draws = ballots(5, true).map(actual => ({ actual, weight: actual.reduce((w, j, i) => w * dist.weights[i][j], 1) })).filter(draw => draw.weight);
+  const total = draws.reduce((sum, draw) => sum + draw.weight, 0);
+  const hits = (ballot, actual) => ballot.filter((j, i) => actual[i] === j).length;
+  wonA.forEach((row, i) => row.forEach((p, j) => {
+    const expectedA = draws.reduce((sum, draw) => sum + (draw.actual[i] === j && hits(ballotsPair[0], draw.actual) >= hits(ballotsPair[1], draw.actual) ? draw.weight : 0), 0) / total;
+    near(p, expectedA);
+    near(wonB[i][j], dist.matrix[i][j] - expectedA);
+  }));
+});
+
+test('all team algorithms return valid exact scores and never beat exhaustive optimum', () => {
+  const dist = model(group(['A', 'B', 'C', 'D', 'E'], [pair('A', 'B', 'more'), pair('C', 'D', 'excluded'), pair('E', 'A', 'less')]));
+  for (const unique of [false, true]) for (const target of [undefined, 2]) {
+    const solo = target === undefined ? bestExpected(dist.matrix, unique) : recommendations(dist, target)[Number(unique)].tail.guess;
+    const optimum = exhaustiveTeam(dist, unique, target);
+    for (const algorithm of Object.values(TEAM_ALGORITHMS)) {
+      const result = algorithm(dist, unique, solo, target);
+      near(result.value, teamValue(dist, result.ballots, target));
+      assert.ok(result.value <= optimum.value + 1e-12);
+      if (unique) result.ballots.forEach(ballot => assert.equal(new Set(ballot).size, 5));
+    }
+    if (target === undefined) assert.ok(optimum.value <= rowUpperBound(dist) + 1e-12);
+  }
+});
+
+test('deep search respects cancellation and keeps an exact score', () => {
+  const dist = model(group(Array.from({ length: 8 }, (_, i) => `${i}`)));
+  const solo = bestExpected(dist.matrix, false), result = deepTeamSearch(dist, false, solo, undefined, { budgetMs: 1000, shouldStop: () => true });
+  assert.equal(result.stopped, true);
+  near(result.value, teamValue(dist, result.ballots));
+});
+
+test('deep search keeps tiny exact improvements', () => {
+  const dist = model(group(Array.from({ length: 18 }, (_, i) => `${i}`)));
+  const solo = recommendations(dist, 17)[0].tail.guess, greedy = teamRecommendation(dist, false, solo, 17);
+  const deep = deepTeamSearch(dist, false, solo, 17, { budgetMs: 1 });
+  assert.ok(deep.value >= greedy.value);
+});
+
+test('unique flow bound is valid and no looser than the row bound', () => {
+  const dist = model(group(['A', 'B', 'C', 'D', 'E'], [pair('A', 'B', 'more'), pair('C', 'D', 'excluded'), pair('E', 'A', 'less')]));
+  const bound = uniqueFlowUpperBound(dist), optimum = exhaustiveTeam(dist, true);
+  assert.ok(bound <= rowUpperBound(dist) + 1e-12);
+  assert.ok(optimum.value <= bound + 1e-12);
+});
+
+test('team score distribution reports cumulative exact thresholds', () => {
+  const dist = model(group(['A', 'B', 'C', 'D', 'E'], [pair('A', 'B', 'more')]));
+  const ballotsPair = [[1, 0, 3, 4, 2], [2, 3, 4, 1, 0]], distribution = teamDistribution(dist, ballotsPair, [1, 2, 3, 4, 5]);
+  distribution.forEach(({ score, probability }) => near(probability, teamValue(dist, ballotsPair, score - 1)));
+  for (let i = 1; i < distribution.length; i++) assert.ok(distribution[i].probability <= distribution[i - 1].probability + 1e-12);
+  assert.deepEqual(teamDistribution(dist, ballotsPair, [6, 7]), [{ score: 6, probability: 0 }, { score: 7, probability: 0 }]);
 });

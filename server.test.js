@@ -48,6 +48,7 @@ test('groups use separate YAML files, reject stale saves, and survive reload', a
   assert.equal((await (await send(api)).json()).warnings.length, 2);
   assert.equal((await fetch(base + api, { headers: { Origin: 'https://other.example' } })).status, 403);
   assert.equal((await send('/')).status, 200);
+  for (const file of ['app.js', 'solver.js', 'team-search.js', 'worker.js', 'deep-worker.js', 'group.js']) assert.equal((await send(`/${file}`)).status, 200);
   assert.equal((await send('/data/' + id)).status, 404);
 
   const participants = Array.from({ length: 18 }, (_, i) => `${'字'.repeat(79)}${String.fromCharCode(65 + i)}`);

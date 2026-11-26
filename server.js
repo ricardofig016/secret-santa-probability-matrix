@@ -9,7 +9,7 @@ import { validateGroup } from './group.js';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const resources = new Map([
   ['/', ['index.html', 'text/html']], ['/index.html', ['index.html', 'text/html']],
-  ['/styles.css', ['styles.css', 'text/css']], ...['app', 'solver', 'worker', 'group'].map(name => [`/${name}.js`, [`${name}.js`, 'text/javascript']]),
+  ['/styles.css', ['styles.css', 'text/css']], ...['app', 'solver', 'team-search', 'worker', 'deep-worker', 'group'].map(name => [`/${name}.js`, [`${name}.js`, 'text/javascript']]),
 ]);
 const validId = /^[a-z0-9][a-z0-9_-]{0,79}\.ya?ml$/i;
 const failure = (status, message) => Object.assign(new Error(message), { status });

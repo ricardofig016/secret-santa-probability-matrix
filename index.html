@@ -39,6 +39,7 @@
             <button id="target-mode" type="button" aria-pressed="false">Beat target</button>
           </div>
           <label class="switch"><input id="team" type="checkbox"> Team of 2</label>
+          <label class="duration">Deep search <select id="deep-duration"><option value="10000">10 s</option><option value="30000" selected>30 s</option><option value="120000">2 min</option><option value="300000">5 min</option></select></label>
           <label id="target-controls" class="slider" hidden>Target score <output id="target-value" for="target">0</output><input id="target" type="range" min="0" max="0" value="0" step="1"></label>
         </div>
         <p id="recommendation-status" class="visually-hidden" role="status"></p>

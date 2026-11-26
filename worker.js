@@ -1,4 +1,5 @@
-import { bestExpected, model, recommendations, teamRecommendation } from './solver.js';
+import { bestExpected, model, recommendations } from './solver.js';
+import { instantTeam, rowUpperBound, teamDistribution, uniqueFlowUpperBound } from './team-search.js';
 
 let dist, average;
 self.onmessage = ({ data: { group, target, mode, team, token } }) => {
@@ -11,10 +12,11 @@ self.onmessage = ({ data: { group, target, mode, team, token } }) => {
     if (dist?.status !== 'ok') return;
     const cards = recommendations(dist, target, average).map((card, index) => {
       const pick = card[mode];
-      const result = { ...pick, ballots: [pick.guess] };
+      const result = { ...pick, ballots: [pick.guess], distribution: teamDistribution(dist, [pick.guess, pick.guess]) };
       if (!team) return result;
-      const pair = teamRecommendation(dist, Boolean(index), pick.guess, mode === 'tail' ? target : undefined);
-      return { ...result, ballots: pair.ballots, team: pair };
+      const pair = instantTeam(dist, Boolean(index), pick.guess, mode === 'tail' ? target : undefined);
+      const bound = mode === 'expected' ? (index ? uniqueFlowUpperBound(dist) : rowUpperBound(dist)) : undefined;
+      return { ...result, ballots: pair.ballots, solo: pick.guess, distribution: teamDistribution(dist, pair.ballots), team: { ...pair, bound } };
     });
     self.postMessage({ token, mode, team, cards });
   } catch (error) {
