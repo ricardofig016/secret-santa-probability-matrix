@@ -9,6 +9,7 @@ import { validateGroup } from './group.js';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const resources = new Map([
   ['/', ['index.html', 'text/html']], ['/index.html', ['index.html', 'text/html']],
+  ['/favicon.ico', ['favicon.ico', 'image/x-icon']],
   ['/styles.css', ['styles.css', 'text/css']], ...['app', 'solver', 'team-search', 'worker', 'deep-worker', 'group'].map(name => [`/${name}.js`, [`${name}.js`, 'text/javascript']]),
 ]);
 const validId = /^[a-z0-9][a-z0-9_-]{0,79}\.ya?ml$/i;
@@ -63,7 +64,7 @@ export function makeServer(directory = join(root, 'data')) {
   }
   return createServer(async (req, res) => {
     const send = (status, data, mime = 'application/json') => {
-      res.writeHead(status, { 'Content-Type': `${mime}; charset=utf-8`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+      res.writeHead(status, { 'Content-Type': mime === 'image/x-icon' ? mime : `${mime}; charset=utf-8`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
       res.end(mime === 'application/json' ? JSON.stringify(data) : data);
     };
     try {
